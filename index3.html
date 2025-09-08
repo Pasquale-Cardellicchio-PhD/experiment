@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html;charset=utf-8">
+  <title>HTML5 Fitts' Law Task</title>
+  <script type="text/javascript" src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.20/lodash.min.js" integrity="sha256-ur/YlHMU96MxHEsy3fHGszZHas7NzH4RQlD4tDVvFhw=" crossorigin="anonymous"></script>
+  <script src="https://d3js.org/d3.v4.min.js"></script>
+  <link type="text/css" rel="stylesheet" href="css/reset.css" />
+  <link type="text/css" rel="stylesheet" href="css/style.css" />
+</head>
+
+<body>
+  <div class="container">
+    <h1>Fitts' Law Task</h1>
+    <div class="fitts-area">
+      <div id="test-area" class="sans"></div>
+      <p class="caption">
+        Try to click the red circle as fast as possible but at the same time try to avoid errors.
+      </p>
+    </div>
+    <div class="result" id="complete-area" style="display:none;">
+      <h2>Data submitted successfully....</h2>
+      <p>Thank you for participating!</p>
+    </div>
+
+    <div class="result" id="incomplete-area" style="display:none;color:#f00;">
+      <p><strong>There was a problem submitting your data.</strong></p>
+      <button id="retry-submit">Try again</button>
+    </div>
+
+    <hr>
+  </div>
+
+  <!-- Qui dentro c'è tutto il codice JS unito -->
+  <script>
+    "use strict";
+
+    function makeDimension(width, height, top, right, bottom, left) {
+      return {
+        width: width,
+        height: height,
+        innerWidth: width - (left + right),
+        innerHeight: height - (top + bottom),
+        top: top,
+        right: right,
+        bottom: bottom,
+        left: left,
+        cx: (width - (left + right)) / 2 + left,
+        cy: (height - (top + bottom)) / 2 + top
+      };
+    }
+
+    var user = guid();
+    var clickcount = 0;
+    var currentCondition = 0;
+
+    var testDimension = makeDimension(700, 500, 30, 30, 30, 30);
+
+    var LIVE_STAY = 1000;
+    var MAX_TIME = 2000;
+    var UPDATE_DELAY = MAX_TIME;
+    var MAX_SPEED = 1;
+
+    var fittsTest, testAreaSVG, firstData;
+
+    var conditions = _.shuffle([
+      { width: 35, distance: 275, type: 'experimental' },
+      { width: 55, distance: 275, type: 'experimental' },
+      { width: 35, distance: 325, type: 'experimental' },
+      { width: 55, distance: 325, type: 'experimental' }
+    ]);
+    conditions.unshift({ width: 60, distance: 200, type: 'training' });
+
+    $(document).ready(function () {
+      $('#retry-submit').click(function () { sendData(); });
+
+      doD3Setup();
+      fittsTest = FittsTest();
+      fittsTest.updateISOCircles();
+      fittsTest.addDataSet();
+    });
+
+    function FittsTest() {
+      return {
+        target: { x: 0, y: 0, r: 10 },
+        start: { x: 0, y: 0, t: 0 },
+        last: {},
+        isoPositions: [],
+        currentPosition: 0,
+        currentCount: 0,
+        miss: 0,
+        isoLimits: { minD: 120, maxD: 300, minW: 10, maxW: 100 },
+        isoParams: {
+          num: 9,
+          distance: conditions[currentCondition].distance,
+          width: conditions[currentCondition].width
+        },
+        currentPath: [],
+        active: false,
+        data: [],
+        currentDataSet: 0,
+        dataCnt: 0,
+        colour: d3.scaleOrdinal(d3.schemeCategory10),
+        sumID: 0,
+        sumTime: 0,
+        updateTimeoutHandle: undefined,
+
+        generateTarget: function () {
+          this.target = this.isoPositions[this.currentPosition];
+          this.target.distance = this.isoParams.distance;
+          this.currentPosition = (this.currentPosition + Math.ceil(this.isoPositions.length / 2)) % this.isoPositions.length;
+
+          var target = testAreaSVG.selectAll('#target').data([this.target]);
+
+          var insert = function (d) {
+            d.attr('cx', d => d.x)
+             .attr('cy', d => d.y)
+             .attr('r', d => d.w / 2);
+          }
+
+          target.enter().append('circle').attr('id', 'target').style('fill', 'red').call(insert);
+          target.transition().call(insert);
+        },
+
+        updateISOCircles: function () {
+          this.currentCount = 0;
+          this.generateISOPositions(this.isoParams.num, this.isoParams.distance, this.isoParams.width);
+
+          var circles = testAreaSVG.selectAll('circle').data(this.isoPositions);
+
+          var insert = function (d) {
+            d.attr('cx', d => d.x)
+             .attr('cy', d => d.y)
+             .attr('r', d => d.w / 2);
+          }
+
+          circles.enter().append('circle').attr('class', 'iso').call(insert);
+          circles.transition().call(insert);
+          circles.exit().transition().attr('r', 0).remove();
+
+          this.currentPosition = 0;
+          this.generateTarget();
+        },
+
+        generateISOPositions: function (num, d, w) {
+          this.isoPositions = [];
+          for (var i = 0; i < num; i++) {
+            this.isoPositions[i] = {
+              x: testDimension.cx + ((d / 2) * Math.cos((2 * Math.PI * i) / num)),
+              y: testDimension.cy + ((d / 2) * Math.sin((2 * Math.PI * i) / num)),
+              w: w
+            };
+          }
+        },
+
+        removeTarget: function () {
+          testAreaSVG.selectAll('#target').data([]).exit().remove();
+          this.currentPath = [];
+        },
+
+        mouseClicked: function (x, y) {
+          if (distance({ x: x, y: y }, this.target) < (this.target.w / 2)) {
+            this.addDataPoint({
+              start: this.start,
+              target: this.target,
+              path: this.currentPath,
+              hit: { x: x, y: y, t: (new Date).getTime() }
+            });
+            this.removeTarget();
+            this.currentCount++;
+            this.generateTarget();
+            this.last = { x: x, y: y, t: (new Date).getTime() };
+            this.start = this.last;
+            this.currentPath.push(this.last);
+          } else {
+            this.miss++;
+          }
+        },
+
+        mouseMoved: function (x, y) {
+          if (this.active) {
+            if (x == this.last.x && y == this.last.y) return;
+            if (this.updateTimeoutHandle) window.clearTimeout(this.updateTimeoutHandle);
+            this.updateTimeoutHandle = window.setTimeout(this.updatePlots, UPDATE_DELAY, this);
+
+            var newPoint = { x: x, y: y, t: (new Date).getTime() }
+            this.currentPath.push(newPoint)
+
+            var dt = newPoint.t - this.last.t;
+            var dist = distance(this.last, { x: x, y: y })
+            var speed = dt > 0 ? dist / dt : 0;
+
+            testAreaSVG.append('line')
+              .attr('class', 'trace')
+              .attr('x1', this.last.x)
+              .attr('x2', newPoint.x)
+              .attr('y1', this.last.y)
+              .attr('y2', newPoint.y)
+              .style('stroke', v(speed))
+              .transition().duration(5000)
+              .style('stroke-opacity', 0).remove();
+
+            this.last = newPoint;
+          }
+        },
+
+        addDataPoint: function (data) {
+          if (this.active == false) { this.active = true; return; }
+          var dt = data.hit.t - data.start.t;
+
+          if (dt < MAX_TIME) {
+            clickcount += 1;
+            var dist = distance(data.target, data.start);
+            var id = shannon(dist, data.target.w);
+            var clickError = distance(
+              { x: data.hit.x, y: data.hit.y },
+              { x: data.target.x, y: data.target.y }
+            );
+
+            this.data[this.currentDataSet].data.push({
+              time: dt,
+              distance: data.target.distance,
+              width: data.target.w,
+              type: conditions[currentCondition].type,
+              conditionOrder: currentCondition,
+              clickX: data.hit.x,
+              clickY: data.hit.y,
+              targetX: data.target.x,
+              targetY: data.target.y,
+              clickError: clickError
+            });
+          }
+
+          if (clickcount === 10) {
+            if (currentCondition === conditions.length - 1) {
+              $('.fitts-area').remove();
+              sendData();
+            } else {
+              $('.trace').remove();
+              clickcount = 0;
+              currentCondition += 1;
+              this.isoParams.width = conditions[currentCondition].width;
+              this.isoParams.distance = conditions[currentCondition].distance;
+              this.updateISOCircles();
+              this.active = false;
+            }
+          }
+        },
+
+        addDataSet: function () {
+          this.dataCnt++;
+          this.data[this.dataCnt] = { data: [] };
+          this.currentDataSet = this.dataCnt;
+        }
+      }
+    };
+
+    function mouseMoved() {
+      var m = d3.mouse(this);
+      fittsTest.mouseMoved(m[0], m[1])
+    }
+
+    function mouseClicked() {
+      var m = d3.mouse(this);
+      fittsTest.mouseClicked(m[0], m[1]);
+    }
+
+    function dot(a, b) { return (a.x * b.x) + (a.y * b.y); }
+    function isLeft(A, B, p) { return ((B.x - A.x) * (p.y - A.y) - (B.y - A.y) * (p.x - A.x)) >= 0 ? 1 : -1; }
+    function minus(a, b) { return { x: a.x - b.x, y: a.y - b.y }; }
+    function distance(a, b) { var dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
+    function sign(a) { return a >= 0 ? 1 : -1; }
+    function clampInt(lower, upper, x) { return Math.min(upper, Math.max(lower, Math.floor(x))); }
+    function shannon(A, W) { return Math.log(A / W + 1) / Math.log(2); }
+    function bgRect(d, dim) { return d.append('rect').attr('width', dim.width).attr('height', dim.height).attr('class', 'back'); }
+    function guid() { function s4() { return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1); } return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4(); }
+
+    function sendData() {
+      var participant = user;
+      var allData = [];
+      for (var i = 1; i <= fittsTest.dataCnt; i++) { allData = allData.concat(fittsTest.data[i].data); }
+      var csvData = '"Participant","Type","ConditionOrder","Width","Distance","Time","ClickX","ClickY","TargetX","TargetY","ClickError"\n';
+      allData.forEach(function (trial) {
+        csvData += `"${participant}","${trial.type}","${trial.conditionOrder}","${trial.width}","${trial.distance}","${trial.time}","${trial.clickX}","${trial.clickY}","${trial.targetX}","${trial.targetY}","${trial.clickError}"\n`;
+      });
+      var blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+      var link = document.createElement("a");
+      if (link.download !== undefined) {
+        var url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", "fitts_law_data.csv");
+        link.style.visibility = "hidden";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+      alert("Esperimento completato! I dati con coordinate e distanza clic-target sono stati salvati come file CSV.");
+    }
+
+    function v(v) { return 'rgb(0,0,' + clampInt(0, 255, (v / MAX_SPEED) * 255) + ')'; }
+
+    function doD3Setup() {
+      testAreaSVG = d3.select('#test-area').append('svg')
+        .attr('width', testDimension.width)
+        .attr('height', testDimension.height)
+        .style('pointer-events', 'all')
+        .on('mousemove', mouseMoved)
+        .on('mousedown', mouseClicked)
+        .call(bgRect, testDimension);
+    }
+  </script>
+</body>
+</html>

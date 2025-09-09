@@ -12,11 +12,19 @@ body {
 
 .container{
     margin:auto;
-    width:50%;
+    width: 95%; /* aumentato per sfruttare meglio lo schermo */
+}
+
+#test-area {
+  width: 100%;
+  height: 100%;
 }
 
 #test-area svg{
-    border:none;
+     width: 100%;
+     height: 100%;
+     border: none;
+     display: block;
 }
 
 .fitts-area{
@@ -24,13 +32,13 @@ body {
     text-align:center;
 }
 
-h1 {
-	display: block;
-	font-size: 2em;
-	font-weight: 900;
-	margin-bottom: 0.3333333em;
-	margin-top: 0.333333em;
-}
+/* h1 { */
+	/* display: block; */
+	/* font-size: 2em; */
+	/* font-weight: 900; */
+	/* margin-bottom: 0.3333333em; */
+	/* margin-top: 0.333333em; */
+/* } */
 
 h2 {
 	display: block;
@@ -44,9 +52,9 @@ p {
 	margin-bottom: 1em;
 }
 
-h1 strong {
-	font-weight: 400;
-}
+/* h1 strong { */
+	/* font-weight: 400; */
+/* } */
 
 strong {
 /*	font-family: 'Open Sans';*/
@@ -76,6 +84,7 @@ p.note {
 }
 
 .border {
+	/* border: solid black 1px; */
 	border: solid black 1px;
 }
 
@@ -150,9 +159,10 @@ line {
   shape-rendering: crispEdges;
 }
 
+/* Rimuovo il bordo nero indesiderato sui path */
 path {
   fill: none;
-  stroke: #000;
+  stroke: #000; /* prima era stroke: #000 */
 }
 
 

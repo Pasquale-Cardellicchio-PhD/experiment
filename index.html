@@ -35,20 +35,16 @@
     var clickcount = 0;
     var currentCondition = 0;
     var fittsTest, testAreaSVG;
-    var experimentStarted = false; // Flag per gestire l'avvio
+    var experimentStarted = false; 
     
-    // Valori costanti
-    var LIVE_STAY = 1000;
-    var MAX_TIME = 2000;
-    var UPDATE_DELAY = MAX_TIME;
-    var MAX_SPEED = 1;
+    // Parametri
+    var MAX_TIME = 3000; 
+    var TRIALS_PER_CONDITION = 15; 
     
-    // Variabili che verranno ricalcolate dopo il fullscreen
     var testDimension;
     var conditions;
 
-
-    // --- FUNZIONI DI BASE ---
+    // --- FUNZIONI BASE ---
     function makeDimension(width, height, top, right, bottom, left) {
       return {
         width: width, height: height,
@@ -60,58 +56,48 @@
     }
     
     function initializeDimensionsAndConditions() {
-        // Ricalcola le dimensioni basandosi sulla finestra corrente (che sarà fullscreen)
-        testDimension = makeDimension(
-            window.innerWidth * 0.9, window.innerHeight * 0.8, 30, 30, 30, 30
-        );
+      testDimension = makeDimension(
+        window.innerWidth * 0.9, window.innerHeight * 0.8, 30, 30, 30, 30
+      );
 
-        // Ricalcola le condizioni del test con le nuove dimensioni
-        conditions = _.shuffle([
-            { width: testDimension.innerWidth * 0.04, distance: testDimension.innerWidth * 0.35, type: 'experimental' },
-            { width: testDimension.innerWidth * 0.06, distance: testDimension.innerWidth * 0.35, type: 'experimental' },
-            { width: testDimension.innerWidth * 0.04, distance: testDimension.innerWidth * 0.42, type: 'experimental' },
-            { width: testDimension.innerWidth * 0.06, distance: testDimension.innerWidth * 0.42, type: 'experimental' }
-        ]);
-        conditions.unshift({ width: testDimension.innerWidth * 0.07, distance: testDimension.innerWidth * 0.25, type: 'training' });
+      // Training + 4 condizioni sperimentali
+      conditions = _.shuffle([
+        { width: testDimension.innerWidth * 0.04, distance: testDimension.innerWidth * 0.35, type: 'experimental' },
+        { width: testDimension.innerWidth * 0.06, distance: testDimension.innerWidth * 0.35, type: 'experimental' },
+        { width: testDimension.innerWidth * 0.04, distance: testDimension.innerWidth * 0.42, type: 'experimental' },
+        { width: testDimension.innerWidth * 0.06, distance: testDimension.innerWidth * 0.42, type: 'experimental' }
+      ]);
+      conditions.unshift({ width: testDimension.innerWidth * 0.07, distance: testDimension.innerWidth * 0.25, type: 'training' });
     }
 
-    // --- LOGICA DI AVVIO ---
+    // --- AVVIO ---
     $(document).ready(function () {
       $('#retry-submit').click(function () { sendData(); });
-      
-      // Calcola le dimensioni iniziali solo per disegnare l'area
       initializeDimensionsAndConditions(); 
       doD3Setup();
-      drawStartTrial(); // Disegna il primo pallino centrale per iniziare
+      drawStartTrial(); 
     });
 
     function drawStartTrial() {
-        testAreaSVG.append('circle')
-            .attr('id', 'start-target')
-            .attr('cx', testDimension.cx)
-            .attr('cy', testDimension.cy)
-            .attr('r', testDimension.innerWidth * 0.035) // Dimensione del pallino iniziale
-            .style('fill', 'red');
+      testAreaSVG.append('circle')
+        .attr('id', 'start-target')
+        .attr('cx', testDimension.cx)
+        .attr('cy', testDimension.cy)
+        .attr('r', testDimension.innerWidth * 0.035)
+        .style('fill', 'red');
     }
 
     function startExperiment() {
-        experimentStarted = true;
-        $('#start-target').remove(); // Rimuove il pallino di avvio
-
-        // Ricalcola tutto dopo essere entrati in fullscreen
-        initializeDimensionsAndConditions();
-        
-        // Aggiorna le dimensioni dell'SVG
-        d3.select("#test-area svg")
-            .attr("width", testDimension.width)
-            .attr("height", testDimension.height);
-        
-        // Ora inizializza e avvia il test vero e proprio
-        fittsTest = FittsTest();
-        fittsTest.updateISOCircles();
-        fittsTest.addDataSet();
+      experimentStarted = true;
+      $('#start-target').remove();
+      initializeDimensionsAndConditions();
+      d3.select("#test-area svg")
+        .attr("width", testDimension.width)
+        .attr("height", testDimension.height);
+      fittsTest = FittsTest();
+      fittsTest.updateISOCircles();
+      fittsTest.addDataSet();
     }
-
 
     /* ----------------------------
         Oggetto Test di Fitts
@@ -121,7 +107,7 @@
         target: { x: 0, y: 0, r: 10 }, start: { x: 0, y: 0, t: 0 }, last: {}, isoPositions: [],
         currentPosition: 0, currentCount: 0, miss: 0,
         isoParams: { num: 9, distance: conditions[currentCondition].distance, width: conditions[currentCondition].width },
-        currentPath: [], active: false, data: [], currentDataSet: 0, dataCnt: 0, updateTimeoutHandle: undefined,
+        currentPath: [], active: false, data: [], currentDataSet: 0, dataCnt: 0,
 
         generateTarget: function () {
           this.target = this.isoPositions[this.currentPosition];
@@ -159,47 +145,46 @@
         removeTarget: function () { testAreaSVG.selectAll('#target').data([]).exit().remove(); this.currentPath = []; },
 
         mouseClicked: function (x, y) {
-          if (distance({ x: x, y: y }, this.target) < (this.target.w / 2)) {
-            this.addDataPoint({
-              start: this.start, target: this.target, path: this.currentPath,
-              hit: { x: x, y: y, t: (new Date).getTime() }
-            });
-            this.removeTarget(); this.currentCount++; this.generateTarget();
-            this.last = { x: x, y: y, t: (new Date).getTime() };
-            this.start = this.last; this.currentPath.push(this.last);
-          } else { this.miss++; }
-        },
+          let isHit = distance({ x: x, y: y }, this.target) < (this.target.w / 2);
 
-        mouseMoved: function (x, y) {
-          if (this.active) {
-            if (x == this.last.x && y == this.last.y) return;
-            if (this.updateTimeoutHandle) window.clearTimeout(this.updateTimeoutHandle);
-            this.updateTimeoutHandle = window.setTimeout(this.updatePlots, UPDATE_DELAY, this);
-            var newPoint = { x: x, y: y, t: (new Date).getTime() }
-            this.currentPath.push(newPoint)
-            var dt = newPoint.t - this.last.t;
-            var dist = distance(this.last, { x: x, y: y });
-            var speed = dt > 0 ? dist / dt : 0;
-            testAreaSVG.append('line').attr('class', 'trace')
-              .attr('x1', this.last.x).attr('x2', newPoint.x).attr('y1', this.last.y).attr('y2', newPoint.y)
-              .style('stroke', v(speed)).transition().duration(5000).style('stroke-opacity', 0).remove();
-            this.last = newPoint;
-          }
+          // Feedback visivo
+          d3.select("#target").style("fill", isHit ? "green" : "orange");
+
+          this.addDataPoint({
+            start: this.start, target: this.target, path: this.currentPath,
+            hit: { x: x, y: y, t: performance.now(), success: isHit }
+          });
+
+          setTimeout(() => {
+            this.removeTarget();
+            this.currentCount++;
+            this.generateTarget();
+            this.last = { x: x, y: y, t: performance.now() };
+            this.start = this.last;
+            this.currentPath.push(this.last);
+          }, 150);
         },
 
         addDataPoint: function (data) {
-          if (this.active == false) { this.active = true; return; }
+          if (!this.active) { this.active = true; return; }
           var dt = data.hit.t - data.start.t;
           if (dt < MAX_TIME) {
             clickcount += 1;
             var clickError = distance({ x: data.hit.x, y: data.hit.y }, { x: data.target.x, y: data.target.y });
             this.data[this.currentDataSet].data.push({
-              time: dt, distance: data.target.distance, width: data.target.w, type: conditions[currentCondition].type,
-              conditionOrder: currentCondition, clickX: data.hit.x, clickY: data.hit.y,
-              targetX: data.target.x, targetY: data.target.y, clickError: clickError
+              time: dt,
+              distance: data.target.distance,
+              width: data.target.w,
+              type: conditions[currentCondition].type,
+              conditionOrder: currentCondition,
+              startX: data.start.x, startY: data.start.y,   // ✅ aggiunto
+              clickX: data.hit.x, clickY: data.hit.y,
+              targetX: data.target.x, targetY: data.target.y,
+              clickError: clickError,
+              hit: data.hit.success
             });
           }
-          if (clickcount === 10) {
+          if (clickcount === TRIALS_PER_CONDITION) {
             if (currentCondition === conditions.length - 1) {
               $('.fitts-area').remove(); sendData();
             } else {
@@ -218,36 +203,38 @@
     /* ----------------------------
         Funzioni Mouse e Helper
     -----------------------------*/
-    function mouseMoved() {
-      if (!experimentStarted) return;
-      var m = d3.mouse(this);
-      fittsTest.mouseMoved(m[0], m[1]);
-    }
-
     function mouseClicked() {
-        var m = d3.mouse(this);
-        if (!experimentStarted) {
-            // Questo è il primo click, sul pallino di avvio
-            var startTarget = d3.select('#start-target');
-            var r = parseFloat(startTarget.attr('r'));
-            var cx = parseFloat(startTarget.attr('cx'));
-            var cy = parseFloat(startTarget.attr('cy'));
-            if (distance({x: m[0], y: m[1]}, {x: cx, y: cy}) < r) {
-                openFullscreen();
-                // Aspettiamo un istante per permettere al browser di entrare in fullscreen
-                // prima di ricalcolare le dimensioni e avviare il test.
-                setTimeout(startExperiment, 500); 
-            }
-        } else {
-            // L'esperimento è già iniziato, gestisci i click normalmente
-            fittsTest.mouseClicked(m[0], m[1]);
+      var m = d3.mouse(this);
+      if (!experimentStarted) {
+        var startTarget = d3.select('#start-target');
+        var r = parseFloat(startTarget.attr('r'));
+        var cx = parseFloat(startTarget.attr('cx'));
+        var cy = parseFloat(startTarget.attr('cy'));
+        if (distance({x: m[0], y: m[1]}, {x: cx, y: cy}) < r) {
+          openFullscreen();
+          setTimeout(startExperiment, 500); 
         }
+      } else {
+        fittsTest.mouseClicked(m[0], m[1]);
+      }
     }
 
     function distance(a, b) { var dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
-    function clampInt(lower, upper, x) { return Math.min(upper, Math.max(lower, Math.floor(x))); }
     function guid() { function s4() { return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1); } return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4(); }
-    function v(v) { return 'rgb(0,0,' + clampInt(0, 255, (v / MAX_SPEED) * 255) + ')'; }
+
+    /* ----------------------------
+        Calcolo IDe e TP
+    -----------------------------*/
+    function computeMetrics(trials) {
+      let De = d3.mean(trials, d => distance({x: d.startX, y: d.startY}, {x: d.clickX, y: d.clickY}));
+      let sigma = d3.deviation(trials, d => d.clickError);
+      let We = sigma ? 4.133 * sigma : d3.mean(trials, d => d.width); 
+      let IDe = Math.log2(De / We + 1);
+      let MT = d3.mean(trials, d => d.time);
+      let TP = IDe / (MT / 1000.0);
+      let errorRate = (trials.filter(d => !d.hit).length / trials.length) * 100;  // ✅ aggiunto
+      return { De, We, IDe, MT, TP, errorRate };
+    }
 
     /* ----------------------------
         Salvataggio Dati e Fine
@@ -255,21 +242,48 @@
     function sendData() {
       var participant = user;
       var allData = [];
-      for (var i = 1; i <= fittsTest.dataCnt; i++) { allData = allData.concat(fittsTest.data[i].data); }
-      var csvData = '"Participant","Type","ConditionOrder","Width","Distance","Time","ClickX","ClickY","TargetX","TargetY","ClickError"\n';
-      allData.forEach(function (trial) {
-        csvData += `"${participant}","${trial.type}","${trial.conditionOrder}","${trial.width}","${trial.distance}","${trial.time}","${trial.clickX}","${trial.clickY}","${trial.targetX}","${trial.targetY}","${trial.clickError}"\n`;
+      for (var i = 1; i <= fittsTest.dataCnt; i++) {
+        allData = allData.concat(fittsTest.data[i].data);
+      }
+
+      let grouped = _.groupBy(allData.filter(d => d.type === "experimental"), "conditionOrder");
+      let summary = [];
+      Object.keys(grouped).forEach(cond => {
+        let metrics = computeMetrics(grouped[cond]);
+        summary.push({
+          condition: cond,
+          De: metrics.De,
+          We: metrics.We,
+          IDe: metrics.IDe,
+          MT: metrics.MT,
+          TP: metrics.TP,
+          errorRate: metrics.errorRate
+        });
       });
+
+      console.log("== Risultati per condizione ==");
+      console.table(summary);
+
+      var csvData = '"Participant","Type","ConditionOrder","Width","Distance","Time","StartX","StartY","ClickX","ClickY","TargetX","TargetY","ClickError","Hit"\n';
+      allData.forEach(function (trial) {
+        csvData += `"${participant}","${trial.type}","${trial.conditionOrder}","${trial.width}","${trial.distance}","${trial.time}","${trial.startX}","${trial.startY}","${trial.clickX}","${trial.clickY}","${trial.targetX}","${trial.targetY}","${trial.clickError}","${trial.hit}"\n`;
+      });
+
+      csvData += '\n"Condition","De","We","IDe","MT","TP","ErrorRate"\n';
+      summary.forEach(s => {
+        csvData += `"${s.condition}","${s.De}","${s.We}","${s.IDe}","${s.MT}","${s.TP}","${s.errorRate}"\n`;
+      });
+
       var blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
       var link = document.createElement("a");
       if (link.download !== undefined) {
         var url = URL.createObjectURL(blob);
-        link.setAttribute("href", url); link.setAttribute("download", "fitts_law_data.csv");
+        link.setAttribute("href", url); link.setAttribute("download", `fitts_data_${participant}.csv`);
         link.style.visibility = "hidden"; document.body.appendChild(link);
         link.click(); document.body.removeChild(link);
       }
       $("#complete-area").show();
-      exitFullscreen(); // Esci dal fullscreen alla fine
+      exitFullscreen();
     }
 
     /* ----------------------------
@@ -279,7 +293,6 @@
       testAreaSVG = d3.select('#test-area').append('svg')
         .attr('width', testDimension.width).attr('height', testDimension.height)
         .style('pointer-events', 'all')
-        .on('mousemove', mouseMoved)
         .on('mousedown', mouseClicked)
         .call(d => d.append('rect').attr('width', testDimension.width).attr('height', testDimension.height).attr('class', 'back'));
     }
